@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="style.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.7.1/styles/vs.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.1/codemirror.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.1/theme/xq-light.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.1/theme/eclipse.min.css"/>
+    <script src="script.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.1/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.1/addon/mode/simple.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
+  </head>
+  <body>
+    <svg style="display: none">
+      <path id="image" fill="currentColor" fill-rule="evenodd" d="
+        M0,0h6v6h-6v-6l1,1v4h4v-4h-4zm2,2h2v2h-2z
+        M10,0h6v6h-6v-6l1,1v4h4v-4h-4zm2,2h2v2h-2z
+        M0,10h6v6h-6v-6l1,1v4h4v-4h-4zm2,2h2v2h-2z
+        M0,7h1v1h2v-1h1v1h1v-1h2v1h1v2h1v-2h-1v-2h-1v-5h1v-1h1v1h-1v5h1v1h1v6h3v-3h-3v-1
+          h1v-2h4v1h1v1h-1v-1h-3v1h2v1h1v1h-1v2h1v-1h1v1h-1v1h1v1h-1v1h-1v-1h1v-1h-2v1h-2
+          v1h-1v-1h1v-1h-1v1h-1v-1h-1v-1h-1v-1h1v1h1v-2h-2v-3h-2v1h-4v-1h-1z
+        M11,11h1v1h-1z
+        M7,15h1v1h-1z
+      "/>
+    </svg>
+    <div id="previews"></div>
+    <table class="config">
+      <tr>
+        <td>
+          <label for="viewbox">Base Size:</label>
+          <select name="viewbox" id="viewbox"></select>
+        </td>
+        <td>
+          <label for="fillrule">Fill Rule:</label>
+          <select name="fillrule" id="fillrule"></select>
+        </td>
+        <td>
+          <label for="fillcolor">Fill Color:</label>
+          <div id="fillcolor-container">
+            <input name="fillcolor" id="fillcolor" type="text" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|currentColor" placeholder="#" value="#000000"/>
+          </div>
+        </td>
+      </tr>
+    </table>
+    <div class="separator"></div>
+    <table class="config">
+      <tr>
+        <td>
+          <label for="name">Icon Name:</label>
+          <input name="name" id="name" type="text" minlength="1" maxlength="80" value="QR Code"/>
+        </td>
+        <td>
+          <span>Icon ID:</span>
+          <div id="id">qr-code</div>
+        </td>
+      </tr>
+    </table>
+    <div class="separator"></div>
+    <table class="config">
+      <tr>
+        <td>
+          <span>UI Zoom:</span>
+          <div id="ui-zoom"><div>&nbsp;</div><div>100%</div><div>&nbsp;</div></div>
+        </td>
+        <td><div id="reformat" class="action-button">Reformat</div></td>
+        <td><div id="export" class="action-button">Export</div></td>
+        <td><div id="download" class="action-button">Save HTML</div></td>
+        <td><div id="download-svg" class="action-button">Save SVG</div></td>
+        <td>
+          <label id="upload" class="action-button" for="file-upload">Load</label>
+          <input id="file-upload" type="file"/>
+        </td>
+      </tr>
+    </table>
+    <div id="pathdata-wrapper"><textarea id="pathdata">
+M0,0h6v6h-6v-6l1,1v4h4v-4h-4zm2,2h2v2h-2z
+M10,0h6v6h-6v-6l1,1v4h4v-4h-4zm2,2h2v2h-2z
+M0,10h6v6h-6v-6l1,1v4h4v-4h-4zm2,2h2v2h-2z
+M0,7h1v1h2v-1h1v1h1v-1h2v1h1v2h1v-2h-1v-2h-1v-5h1v-1h1v1h-1v5h1v1h1v6h3v-3h-3v-1h1v-2h4v1h1v1h-1v-1h-3v1h2v1h1v1h-1v2h1v-1h1v1h-1v1h1v1h-1v1h-1v-1h1v-1h-2v1h-2v1h-1v-1h1v-1h-1v1h-1v-1h-1v-1h-1v-1h1v1h1v-2h-2v-3h-2v1h-4v-1h-1z
+M11,11h1v1h-1z
+M7,15h1v1h-1z
+    </textarea></div>
+    <pre id="errors"></pre>
+    <table id="reference" class="closed">
+      <caption>Instruction Reference</caption>
+      <thead>
+        <tr>
+          <th>Instruction</th>
+          <th>Letters</th>
+          <th>Arguments</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Move To</td>
+          <td>M m</td>
+          <td>X Y</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Line To</td>
+          <td>L l</td>
+          <td>X Y</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Horizontal Line To</td>
+          <td>H h</td>
+          <td>X</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Vertical Line To</td>
+          <td>V v</td>
+          <td>Y</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Cubic Bézier Curve</td>
+          <td>C c</td>
+          <td>X<sub>C1</sub> Y<sub>C1</sub> X<sub>C2</sub> Y<sub>C2</sub> X Y</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Smooth Cubic Bézier Curve</td>
+          <td>S s</td>
+          <td>X<sub>C</sub> Y<sub>C</sub> X Y</td>
+          <td>The control point is a reflection of the control point of the previous curve command.</td>
+        </tr>
+        <tr>
+          <td>Quadratic Bézier Curve</td>
+          <td>Q q</td>
+          <td>X<sub>C</sub> Y<sub>C</sub> X Y</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Smooth Quadratic Bézier Curve</td>
+          <td>T t</td>
+          <td>X Y</td>
+          <td>The control point is a reflection of the control point of the previous curve command.</td>
+        </tr>
+        <tr>
+          <td>Elliptical Arc Curve</td>
+          <td>A a</td>
+          <td>R<sub>X</sub> R<sub>Y</sub> Rotation LargeArc Clockwise X Y</td>
+          <td>Rotation is in degrees</td>
+        </tr>
+        <tr>
+          <td>Close Path</td>
+          <td>Z z</td>
+          <td></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="separator" style="margin-top:0"></div>
+    <pre><code id="output" class="language-xml"></code></pre>
+  </body>
+</html>

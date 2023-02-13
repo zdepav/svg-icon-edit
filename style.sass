@@ -1,0 +1,358 @@
+@use 'sass:list'
+
+$background: #F8F4F0
+$border: #D4D0CC
+
+html, body
+  font-family: sans-serif
+  font-size: 16px
+  background-color: $background
+  margin: 0
+  padding: 0
+
+table.config
+  table-layout: fixed
+  border-collapse: collapse
+  margin: 0 auto
+  
+  td
+    padding: 0 10px 0 8px
+
+    &:not(:first-child)
+      border-left: 1px solid $border
+
+  label
+    vertical-align: middle
+
+  select, input
+    padding: 2px 4px
+    border: 1px solid #808080
+    border-radius: 3px
+    margin-left: 4px
+    vertical-align: middle
+    background-color: $background
+
+    &:focus
+      border: 1px solid #000000
+      outline: none
+
+  input
+    width: 88px
+
+  input:invalid
+    color: #FF0000
+
+#fillcolor-container
+  position: relative
+  display: inline-block
+  padding: 0
+
+  input
+    margin: 0 0 0 4px
+    padding: 4px
+    font-family: monospace
+    font-size: 14px
+    width: 112px
+
+  &::after
+    content: ''
+    position: absolute
+    border: 1px solid #808080
+    border-radius: 3px
+    width: 12px
+    height: 12px
+    right: 4px
+    top: 6px
+    background-color: #000000
+
+#previews
+  display: flex
+  justify-content: center
+  align-items: flex-end
+  border-bottom: 1px solid $border
+  margin-bottom: 8px
+
+  & > .preview
+    margin: 8px 8px 24px 8px
+    border: 1px solid #C0C0C0
+    box-shadow: 0 0 6px #A0A0A0
+    position: relative
+    background-color: #FFFFFF
+
+    & > svg
+      color: #000000
+
+    &::after
+      color: #808080
+      position: absolute
+      text-align: center
+      width: 32px
+      bottom: -18px
+      font-size: 12px
+      line-height: 16px
+
+  @for $i from 1 through 2
+    $size: $i * 8px + 8px
+    .preview:nth-child(#{$i})
+      width: $size
+      height: $size
+
+      & > svg
+        width: $size
+        height: $size
+
+      &::after
+        content: '#{$i * 8 + 8}'
+        left: (($i * 8 + 8) / 2 - 16) * 1px
+
+  @for $i from 2 through 9
+    $size: $i * 16px
+    .preview:nth-child(#{$i + 1})
+      width: $size
+      height: $size
+
+      & > svg
+        width: $size
+        height: $size
+
+      &::after
+        content: '#{$i * 16}'
+        left: (($i * 16) / 2 - 16) * 1px
+
+.separator
+  height: 1px
+  background-color: $border
+  margin: 8px 0
+
+#pathdata-wrapper
+  border-top: 1px solid $border
+  border-bottom: 1px solid $border
+  border-left: none
+  border-right: none
+  margin: 8px 0
+  width: 100%
+  outline: none
+  height: 192px
+  font-family: monospace
+  font-size: 15px
+  padding: 0
+  box-sizing: border-box
+  background-color: $background
+  resize: vertical
+  overflow: auto
+
+  & > div.CodeMirror
+    height: 100%
+
+#name, #id
+  width: 224px
+  text-align: center
+
+#id, .action-button
+  padding: 2px 4px
+  border: 1px solid #808080
+  border-radius: 3px
+  display: inline-block
+  vertical-align: middle
+
+#id
+  font-family: monospace
+  font-size: 13px
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  margin-left: 4px
+
+.action-button
+  text-align: center
+  margin-left: 2px
+  font-size: 14px
+  font-weight: bold
+  -webkit-touch-callout: none
+  -webkit-user-select: none
+  -khtml-user-select: none
+  -moz-user-select: none
+  -ms-user-select: none
+  user-select: none
+  cursor: pointer
+  padding-left: 8px
+  padding-right: 8px
+  
+  &:hover
+    background-color: #F0F0F0
+
+  &:active
+    background-color: #E0E0E0
+    position: relative
+    top: 1px
+
+#download
+
+  &.disabled
+    color: #808080
+    cursor: default
+    background-color: #E0DDDA
+  
+    &:hover
+      background-color: #E0DDDA
+
+    &:active
+      background-color: #E0DDDA
+      top: 0
+
+#file-upload
+  display: none
+
+#errors
+  border-bottom: 1px solid $border
+  color: #C00000
+  font-weight: bold
+  font-size: 12px
+  padding: 0 12px 12px 12px
+
+  &:empty
+    display: none
+
+#output
+  font-family: monospace
+  font-size: 13px
+  background-color: $background !important
+  margin: 0
+  padding: 0
+
+pre
+  white-space: pre-wrap
+  white-space: -moz-pre-wrap
+  white-space: -pre-wrap
+  white-space: -o-pre-wrap
+  word-wrap: break-word
+  margin: 0
+  padding: 12px
+
+#reference
+  border-collapse: collapse
+  margin: 0 auto
+ 
+  caption
+    text-align: center
+    margin-bottom: 8px
+    -webkit-touch-callout: none
+    -webkit-user-select: none
+    -khtml-user-select: none
+    -moz-user-select: none
+    -ms-user-select: none
+    user-select: none
+    cursor: pointer
+
+    &::before, &::after
+      margin: 0 16px
+      content: '^'
+      color: #808080
+
+    &:hover
+      text-shadow: 0 0 2px #C0C0C0
+
+    &:active
+      position: relative
+      top: 1px
+
+  th, td
+    padding: 6px 24px
+    text-align: center
+    border-top: 1px solid $border
+
+    &:first-child
+      padding-left: 64px
+
+    &:last-child
+      padding-right: 64px
+
+  td:nth-child(2), td:nth-child(3)
+    font-family: monospace
+
+  &.closed
+    width: 256px
+    thead, tbody
+      display: none
+
+    caption::before, caption::after
+      content: 'v'
+    
+#ui-zoom
+  border: 1px solid #808080
+  border-radius: 3px
+  display: inline-block
+  vertical-align: middle
+  padding: 0
+  -webkit-touch-callout: none
+  -webkit-user-select: none
+  -khtml-user-select: none
+  -moz-user-select: none
+  -ms-user-select: none
+  user-select: none
+
+  div
+    display: inline-block
+
+  div:nth-child(2)
+    padding: 2px 4px
+    font-size: 14px
+    text-align: center
+
+  div:first-child, div:last-child
+    padding: 2px 10px
+    cursor: pointer
+    font-weight: bold
+    position: relative
+
+    &::after
+      content: ''
+      position: absolute
+      background-color: #808080
+      width: 12px
+      height: 2px
+      left: 6px
+      top: 10px
+
+    &:hover
+      background: #F0F0F0
+
+    &:active
+      background: #E0E0E0
+
+      &::after
+        top: 11px
+
+      &::before
+        top: 6px
+
+  div:first-child
+    border-right: 1px solid #808080
+
+  div:last-child
+    border-left: 1px solid #808080
+
+    &::before
+      content: ''
+      position: absolute
+      background-color: #808080
+      width: 2px
+      height: 12px
+      left: 11px
+      top: 5px
+
+.cm-s-svg-path-data
+  .cm-keyword
+    color: #C00060
+    font-weight: bold
+    line-height: 1em
+
+  .cm-number
+    color: #50A000
+
+  .cm-error
+    color: #FFFFFF
+    background-color: #FF0040
+
+  .CodeMirror-gutters
+    background-color: $background

@@ -1,0 +1,743 @@
+declare const hljs: any;
+declare const $: any;
+declare const CodeMirror: any;
+
+function store(key: string, value: string): void {
+  window.localStorage.setItem('60b894c5-svged-' + key, value)
+}
+
+function load(key: string, callback: (value: string) => void): void {
+  const val = window.localStorage.getItem('60b894c5-svged-' + key)
+  if (val) {
+    callback(val)
+  }
+}
+
+class StringBuilder {
+  _arr: Array<string>
+
+  constructor(startingValue?: string) {
+  	this._arr = startingValue ? [startingValue] : []
+  }
+
+  append(what: string | Array<any>): void {
+    if (typeof what === 'string') {
+      this._arr.push(what)
+    } else for (let item of what) {
+      this._arr.push(item.toString())
+    }
+  }
+
+  toString(): string {
+    return this._arr.join('')
+  }
+}
+
+const sizes = [16, 24, 32, 48, 64, 80, 96, 112, 128]
+const baseSizes = [16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128]
+
+$('#previews').append(
+  sizes.map(() => {
+    return $('<div>').addClass('preview').append(
+      $('<svg viewBox="0 0 16 16"><use href="#image"/></svg>')
+    )
+  })
+)
+
+function setViewBox(size: number | string): void {
+  $('#previews > .preview > svg').each(function (this: HTMLElement) {
+    this.setAttribute('viewBox', '0 0 ' + size + ' ' + size)
+  })
+}
+
+const viewBoxInput = $('#viewbox')
+viewBoxInput.append(baseSizes.map(size => {
+  return $('<option>').attr({value: size}).text(size + 'pt')
+})).on('change', () => {
+  const val = viewBoxInput.val()
+  setViewBox(val)
+  store('size', val)
+})
+load('size', value => { viewBoxInput.val(value) })
+setViewBox(viewBoxInput.val())
+
+const fillRuleInput = $('#fillrule')
+fillRuleInput.append(
+  $('<option>').attr({value: 'evenodd'}).text('Even / Odd')
+).append(
+  $('<option>').attr({value: 'nonzero'}).text('Non-Zero')
+).on('change', () => {
+  const val = fillRuleInput.val()
+  $('#image').attr({'fill-rule': val})
+  store('fill-rule', val)
+})
+load('fill-rule', value => { fillRuleInput.val(value) })
+$('#image').attr({'fill-rule': fillRuleInput.val()})
+
+const colorInputStyle = $('<style>').appendTo($('head'))
+
+function setColorInputPreview(color: string): void {
+	colorInputStyle.text('#fillcolor-container::after{background-color:' + color + ' !important;}')
+}
+
+const fillColorInput = $('#fillcolor')
+fillColorInput.on('input', () => {
+  if (fillColorInput[0].checkValidity()) {
+    const val = fillColorInput.val()
+    $('#image').attr({fill: val})
+    store('fill-color', val)
+    setColorInputPreview(val)
+  }
+})
+load('fill-color', value => {
+  fillColorInput.val(value)
+  $('#image').attr({fill: value})
+  setColorInputPreview(value)
+})
+/*
+function getPos(str: string, index: number): { line: number, col: number } {
+  let line = 1, col = 1
+  for (let i = 0; i < index; ++i) {
+    if (str[i] == '\n') {
+      line += 1
+      col = 1
+    } else if (str[i] == '\r') {
+      if (i + 1 < str.length && str[i + 1] == '\n') {
+        ++i
+      }
+      line += 1
+      col = 1
+    } else {
+      col += 1
+    }
+  }
+  return {line: line, col: col}
+}*/
+
+type Pos = {x: number, y: number}
+type ParsedArgs = {i: Instruction, r: Array<number>, a: Array<number>}
+type ParsedPathData = Array<{i: Instruction, r: Array<number>, a: Array<number>}>
+class FullParserState {
+  start: Pos
+  pos: Pos
+  instruction: Instruction | null
+  relative: boolean
+  args: Array<number>
+  errors: Array<string>
+
+  constructor() {
+    this.start = {x: 0, y: 0}
+    this.pos = {x: 0, y: 0}
+    this.instruction = null
+  	this.relative = false
+    this.args = []
+    this.errors = []
+  }
+
+  absX2rel(x: number): number { return x - this.pos.x }
+  absY2rel(y: number): number { return y - this.pos.y }
+
+  relX2abs(x: number): number { return this.pos.x + x }
+  relY2abs(y: number): number { return this.pos.y + y }
+
+  fixRelAbsX(args: ParsedArgs, i: number) {
+    if (this.relative) {
+      args.a[i] = this.relX2abs(args.a[i])
+    } else {
+      args.r[i] = this.absX2rel(args.r[i])
+    }
+  }
+  fixRelAbsY(args: ParsedArgs, i: number) {
+    if (this.relative) {
+      args.a[i] = this.relY2abs(args.a[i])
+    } else {
+      args.r[i] = this.absY2rel(args.r[i])
+    }
+  }
+  fixRelAbsXY(args: ParsedArgs, i: number) {
+    this.fixRelAbsX(args, i)
+    this.fixRelAbsY(args, i + 1)
+  }
+}
+class Token {
+  num: boolean
+  val: any
+  line: number
+  col: number
+
+  constructor(num: boolean, val: any, line: number, col: number) {
+    this.num = num
+    this.val = val
+    this.line = line
+    this.col = col
+  }
+}
+  
+function prettyPrintNumber(n: number): string {
+  if (Math.abs(n) < 0.001) {
+    return '0'
+  } 
+  const num = (n + Number.EPSILON).toFixed(3).replace(/\.?0+$/, '')
+  return num.length > 0 && num !== '-' ? num : '0'
+}
+
+class Instruction {
+  letters: string
+  argCount: number
+  _parse: (state: FullParserState, args: ParsedArgs, i: number) => void
+  _prettyPrint?: (args: Array<number>, index: number, output: StringBuilder) => void
+
+  constructor(
+    letters: string,
+    argCount: number,
+    parse: (state: FullParserState, args: ParsedArgs, i: number) => void,
+    prettyPrint?: (args: Array<number>, index: number, output: StringBuilder) => void
+  ) {
+    this.letters = letters
+    this.argCount = argCount
+    this._parse = parse
+    this._prettyPrint = prettyPrint
+  }
+  
+  parse(state: FullParserState): ParsedArgs {
+    const args: ParsedArgs = {i: this, r: state.args, a: state.args.slice()}
+    if (this.argCount > 0) {
+      for (let i = 0; i + this.argCount - 1 < state.args.length; i += this.argCount) {
+        this._parse(state, args, i)
+      }
+    } else {
+      this._parse(state, args, 0)
+    }
+    return args
+  }
+
+  prettyPrint(args: ParsedArgs, output: StringBuilder): void {
+    if (this.argCount === 0) {
+      output.append(this.letters[1])
+      return
+    }
+    for (let j = 0; j < args.a.length; j += this.argCount) {
+      if (j > 0) {
+        output.append(' ')
+      }
+      let argv: Array<number>
+      if (this.letters == 'Mm') {
+        output.append(j > 0 ? 'l' : 'M')
+        argv = j == 0 ? args.a : args.r
+      } else {
+        output.append(this.letters[1])
+        argv = args.r
+      }
+      output.append(' ')
+      if (args.a.length - j < this.argCount) {
+        for (let i = j; i < args.a.length; ++i) {
+          if (i > j) {
+            output.append(',')
+          }
+          output.append(prettyPrintNumber(argv[i]))
+        }
+      } else if (this._prettyPrint) {
+        this._prettyPrint(argv, j, output)
+      } else {
+        for (let i = 0; i < this.argCount; i += 2) {
+      		if (i > 0) {
+            output.append(' ')
+          }
+          output.append(prettyPrintNumber(argv[j + i]))
+          if (i + 1 < this.argCount) {
+            output.append(',')
+            output.append(prettyPrintNumber(argv[j + i + 1]))
+          }
+        }
+      }
+    }
+  }
+
+  _minifyNumber(n: number, output: StringBuilder): void {
+    output.append(prettyPrintNumber(n).replace(/^(-)?0\./, '$1.'))
+  }
+
+  _minifyArgs(args: Array<number>, output: StringBuilder): void {
+    for (let i = 0; i < args.length; ++i) {
+      if (i > 0 && args[i] >= -0.001) {
+        output.append(',')
+      }
+      this._minifyNumber(args[i], output)
+    }
+  }
+
+  minify(args: ParsedArgs, output: StringBuilder): void {
+    if (this.argCount === 0) {
+      output.append(this.letters[1])
+      return
+    }
+    const outR = new StringBuilder(), outA = new StringBuilder()
+    this._minifyArgs(args.r, outR)
+    this._minifyArgs(args.a, outA)
+    const strR = outR.toString(), strA = outA.toString()
+    if (strR.length < strA.length) {
+      output.append(this.letters[1])
+      output.append(strR)
+    } else {
+      output.append(this.letters[0])
+      output.append(strA)
+    }
+  }
+}
+
+const instructions: Record<string, Instruction> = {
+  M: new Instruction('Mm', 2, (state, args, i) => {
+    state.fixRelAbsXY(args, i)
+    state.pos = {x: args.a[i], y: args.a[i + 1]}
+    if (i === 0) {
+      state.start = state.pos
+    }
+  }),
+  L: new Instruction('Ll', 2, (state, args, i) => {
+    state.fixRelAbsXY(args, i)
+    state.pos = {x: args.a[i], y: args.a[i + 1]}
+  }),
+  H: new Instruction('Hh', 1, (state, args, i) => {
+    state.fixRelAbsX(args, i)
+    state.pos = {x: args.a[i], y: state.pos.y}
+  }),
+  V: new Instruction('Vv', 1, (state, args, i) => {
+    state.fixRelAbsY(args, i)
+    state.pos = {x: state.pos.x, y: args.a[i]}
+  }),
+  C: new Instruction('Cc', 6, (state, args, i) => {
+    state.fixRelAbsXY(args, i)
+    state.fixRelAbsXY(args, i + 2)
+    state.fixRelAbsXY(args, i + 4)
+    state.pos = {x: args.a[i + 4], y: args.a[i + 5]}
+  }),
+  S: new Instruction('Ss', 4, (state, args, i) => {
+    state.fixRelAbsXY(args, i)
+    state.fixRelAbsXY(args, i + 2)
+    state.pos = {x: args.a[i + 2], y: args.a[i + 3]}
+  }),
+  Q: new Instruction('Qq', 4, (state, args, i) => {
+    state.fixRelAbsXY(args, i)
+    state.fixRelAbsXY(args, i + 2)
+    state.pos = {x: args.a[i + 2], y: args.a[i + 3]}
+  }),
+  T: new Instruction('Tt', 2, (state, args, i) => {
+    state.fixRelAbsXY(args, i)
+    state.pos = {x: args.a[i], y: args.a[i + 1]}
+  }),
+  A: new Instruction('Aa', 7, (state, args, i) => {
+    state.fixRelAbsXY(args, i + 5)
+    state.pos = {x: args.a[i + 5], y: args.a[i + 6]}
+  }, (args, i, output) => {
+    output.append([
+      prettyPrintNumber(args[i]), ',',
+      prettyPrintNumber(args[i + 1]), ' ',
+      prettyPrintNumber(args[i + 2]), ' ',
+      (args[i + 3] === 0 ? '0' : '1'), ' ',
+      (args[i + 4] === 0 ? '0' : '1'), ' ',
+      prettyPrintNumber(args[i + 5]), ',',
+      prettyPrintNumber(args[i + 6])
+    ])
+  }),
+  Z: new Instruction('Zz', 0, (state, args, i) => {
+    state.pos = state.start
+  }),
+}
+
+const numberRegex = /-?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?/y
+function tokenize(data: string, errors: Array<string>): Array<Token> {
+  const tokens: Array<Token> = []
+  let line = 1, col = 1
+  let prevWasComma = false
+  for (let i = 0; i < data.length; ++i, ++col) {
+    const c = data[i]
+    if (c == '\n') {
+      ++line
+      col = 0
+      prevWasComma = false
+      continue
+    } else if (c == '\r') {
+      if (i + 1 < data.length && data[i + 1] == '\n') {
+        ++i
+      }
+      ++line
+      col = 0
+      prevWasComma = false
+      continue
+    } else if (/^[a-z]$/i.test(c)) {
+      const C = c.toUpperCase()
+      if (C in instructions) {
+        tokens.push(
+          new Token(false, {instruction: instructions[C], relative: c !== C}, line, col)
+        )
+      } else {
+        errors.push('Invalid command "' + c + '" at line ' + line + ', column ' + col)
+      }
+      prevWasComma = false
+      continue
+    } else if (c == ',') {
+      if (prevWasComma) {
+        errors.push('Unexpected character "," at line ' + line + ', column ' + col)
+      }
+      prevWasComma = true
+      continue
+    } else if (/\s/.test(c)) {
+      prevWasComma = false
+      continue
+    }
+    prevWasComma = false
+    numberRegex.lastIndex = i
+    const m = data.match(numberRegex)
+    if (m) {
+    	let val = 0
+      try {
+        val = parseFloat(m[0])
+      } catch(ex) {
+        errors.push('Invalid number ' + m[0] + ' at line ' + line + ', column ' + col)
+      }
+      tokens.push(new Token(true, val, line, col))
+      i += m[0].length - 1
+      col += m[0].length - 1
+      continue
+    }
+    errors.push(
+      'Invalid character ' + (c == '"' ? "'\"'" : '"' + c + '"') +
+      ' at line ' + line + ', column ' + col
+    )
+  }
+  return tokens
+}
+
+function parse(data: string): {data: ParsedPathData, errors: Array<string>} {
+  const state = new FullParserState()
+  const tokens = tokenize(data, state.errors)
+  const ret: ParsedPathData = []
+  let token: Token
+  function processArgs() {
+    if (state.instruction) {
+      ret.push(state.instruction.parse(state))
+      if (
+        state.instruction.argCount > 0 && (
+          state.args.length < state.instruction.argCount ||
+          state.args.length % state.instruction.argCount > 0
+        )
+      ) {
+        state.errors.push(
+          'Wrong number of arguments to "' + token.val.instruction.letters[token.val.relative ? 1 : 0] +
+          '" at line ' + token.line + ', column ' + token.col
+        )
+      }
+    }
+  }
+  
+  for (token of tokens) {
+    if (token.num) {
+      if (state.instruction && state.instruction.argCount == 0) {
+        state.errors.push('Unexpected number at line ' + token.line + ', column ' + token.col)
+      } else {
+        state.args.push(token.val)
+      }
+    } else {
+      processArgs()
+      if (
+        (!state.instruction || state.instruction == instructions.Z) &&
+        token.val.instruction != instructions.M
+      ) {
+        state.errors.push(
+          'Expected MoveTo, found "' + token.val.instruction.letters[token.val.relative ? 1 : 0] +
+          '" at line ' + token.line + ', column ' + token.col
+        )
+      }
+      state.instruction = token.val.instruction
+      state.relative = token.val.relative
+      state.args = []
+    }
+  }
+  processArgs()
+  return {data: ret, errors: state.errors}
+}
+
+function prettyPrint(data: ParsedPathData): string {
+	const out = new StringBuilder()
+  for (let i = 0; i < data.length; ++i) {
+    if (i > 0) {
+      out.append(data[i - 1].i == instructions.Z ? '\n' : ' ')
+    }
+    data[i].i.prettyPrint(data[i], out)
+  }
+  return out.toString()
+}
+
+function minify(data: ParsedPathData): string {
+	const out = new StringBuilder()
+  for (let i = 0; i < data.length; ++i) {
+    data[i].i.minify(data[i], out)
+  }
+  return out.toString()
+}
+
+function validatePathData(data: string): boolean {
+  /*let errors: Array<string> = []
+  for (const match of data.matchAll(/[^MZLHVCSQTA0-9-,.\s]+/gi)) {
+    const { line, col } = getPos(data, match.index)
+    errors.push(
+      'Invalid character' + (match.length > 1 ? 's' : '') + ' "' +
+      match[0].replace('"', '\\"') + '" at line ' + line + ', column ' + col
+    )
+  }
+  for (const match of data.matchAll(/[MLHVCSQTA]\s*[MLHVCSQTAZ]/gi)) {
+    const { line, col } = getPos(data, match.index)
+    errors.push('Missing arguments for "' + match[0][0] + '" at line ' + line + ', column ' + col)
+  }
+  if (!/^\s*M/i.test(data)) {
+    errors.push('Invalid start, path must start with MoveTo')
+  }
+  if (errors.length > 0) {
+    $('#errors').text(errors.join('\n'))
+    return false
+  } else {
+    $('#errors').empty()
+    return true
+  }*/
+  const parsed = parse(data)
+  if (parsed.errors.length > 0) {
+    $('#errors').text(parsed.errors.join('\n'))
+    return false
+  } else {
+    $('#errors').empty()
+    return true
+  }
+}
+
+const pathDataInput = $('#pathdata')
+load('path-data', value => {
+  pathDataInput.val(value)
+  $('#image').attr({d: value})
+})
+
+type ParserState = {indent: number, expectedArgCount: number, argCount: number, prevWasComma: boolean}
+CodeMirror.defineMode('svg_path_data', function(config: any, parserConfig: any) {
+  const indentUnit = config.indentUnit;
+  return {
+    startState: function(): ParserState {
+      return {indent: 0, expectedArgCount: 0, argCount: 0, prevWasComma: false}
+    },
+    token: function(stream: any, state: ParserState) {
+      let style: string | null = 'error', c: string
+      if (stream.eatSpace()) {
+        style = null
+        state.prevWasComma = false
+      } else if (stream.eat(',')) {
+        style = state.prevWasComma ? 'error' : null
+        state.prevWasComma = true
+      } else if (c = stream.eat(/[MLHVCSQTAZ]/i)) {
+        state.prevWasComma = false
+        c = c.toUpperCase()
+        if (c == 'Z') {
+        	state.indent = 0
+        } else if (c == 'M') {
+        	state.indent = indentUnit
+        }
+        style = (
+          state.expectedArgCount > 0
+            ? (state.argCount < state.expectedArgCount || state.argCount % state.expectedArgCount != 0)
+            : c != 'M'
+        ) ? 'keyword error' : 'keyword'
+        state.argCount = 0
+        state.expectedArgCount = instructions[c].argCount
+      } else if (stream.match(/^-?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?/)) {
+        state.prevWasComma = false
+        if (state.expectedArgCount == 0) {
+          style = 'error'
+        } else {
+          ++state.argCount
+          style = 'number'
+        }
+      } else if (!stream.eatWhile(/[BDEFGIJKNOPRUWXY]/i)) {
+        state.prevWasComma = false
+        stream.next()
+      }
+      return style
+    },
+    indent(state: ParserState, textAfter: string): number {
+      return state.indent
+    }
+  }
+})
+
+var editor = CodeMirror.fromTextArea(document.getElementById('pathdata'), {
+  lineNumbers: true,
+  lineWrapping: true,
+  mode: 'svg_path_data',
+  theme: 'svg-path-data'
+})
+editor.on('change', () => {
+  const val = editor.getValue()
+  if (validatePathData(val)) {
+    $('#image').attr({d: val})
+    store('path-data', val)
+  }
+})
+
+const nameInput = $('#name'), idOutput = $('#id')
+function setId(name: string): void {
+  idOutput.text(name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))
+}
+nameInput.on('input', () => {
+  const val = nameInput.val()
+  setId(val)
+  store('name', val)
+})
+load('name', value => {
+  nameInput.val(value)
+  setId(value)
+})
+
+function buildOutput(svgFormat: boolean): string {
+/*
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="391" height="391" viewBox="-70.5 -70.5 391 391" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<rect fill="#fff" stroke="#000" x="-70" y="-70" width="390" height="390"/>
+<g opacity="0.8">
+	<rect x="25" y="25" width="200" height="200" fill="lime" stroke-width="4" stroke="pink" />
+	<circle cx="125" cy="125" r="75" fill="orange" />
+	<polyline points="50,150 50,200 200,200 200,100" stroke="red" stroke-width="4" fill="none" />
+	<line x1="50" y1="50" x2="200" y2="200" stroke="blue" stroke-width="4" />
+</g>
+</svg>
+*/
+  const code = editor.getValue()
+  const parsed = parse(code)
+  const metadata = {
+    format: 'SVG-EDit-v1.0',
+    createdIn: 'https://jsfiddle.net/zdepav/ymqhzepL',
+    name: nameInput.val(),
+    id: idOutput.text(),
+    color: fillColorInput.val(),
+    fillRule: fillRuleInput.val(),
+    baseSize: viewBoxInput.val(),
+    source: code.split(/\n|\r\n?/g),
+    errors: parsed.errors
+  }
+  return svgFormat ? (
+    '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' +
+    '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n' +
+    '<svg viewBox="0 0 ' + metadata.baseSize + ' ' + metadata.baseSize + '">\n' +
+    '  <path fill="' + (metadata.color == 'currentColor' ? '#000000' : metadata.color) + '"' +
+    ' fill-rule="' + metadata.fillRule + '"' +
+    ' d="' + minify(parsed.data) + '"/>\n' + 
+    '</svg>\n' +
+    '<!-- Metadata ' + JSON.stringify(metadata, null, 2) + ' -->\n'
+  ) : (
+    '<!-- Definition -->\n' +
+    '\n' +
+    '<svg style="display:none">\n' +
+    '  <path id="' + metadata.id + '"' +
+    ' fill="' + metadata.color + '"' +
+    ' fill-rule="' + metadata.fillRule + '"' +
+    ' d="' + minify(parsed.data) + '"/>\n' + 
+    '</svg>\n' +
+    '\n' +
+    '<!-- Usage -->\n' +
+    '\n' +
+    '<svg viewBox="0 0 ' + metadata.baseSize + ' ' + metadata.baseSize +
+    '"><use href="#' + metadata.id + '"/></svg>\n' +
+    '\n' +
+    '<!-- Metadata ' + JSON.stringify(metadata, null, 2) + ' -->\n'
+  )
+}
+
+$('#export').on('click', () => {
+  hljs.highlightElement(
+    $('#output').text(buildOutput(false)).attr({
+      'data-file': idOutput.text() + '.svged.html',
+    })[0]
+  )
+})
+
+$('#download-svg, #download').on('click', (e: MouseEvent) => {
+  const out = $('#output')
+  const svgFormat = (e.target as Element).id == 'download-svg'
+  const a = $('<a>').attr({
+    href: 'data:text/plain;charset=utf-8,' + encodeURIComponent(buildOutput(svgFormat)),
+    download: idOutput.text() + (svgFormat ? '.svged.svg' : '.svged.html')
+  }).css({
+    display: 'none'
+  }).appendTo($('body'))
+  a[0].click()
+  a.remove()
+})
+
+$('#reformat').on('click', () => {
+  const parsed = parse(editor.getValue())
+  if (parsed.errors.length > 0) {
+    alert('Reformat failed')
+  } else {
+    editor.setValue(prettyPrint(parsed.data))
+  }
+})
+
+function processFile(content: string): void {
+  const match = content.match(/<!--\s*Metadata\s*(\{.+\})\s*-->/is)
+  if (!match) {
+    alert('Invalid file')
+    return
+  }
+  try {
+    const data = JSON.parse(match[1])
+    nameInput.val(data.name)
+    setId(data.name)
+    const src = data.source.join('\n')
+    editor.setValue(src)
+    fillColorInput.val(data.color)
+    setColorInputPreview(data.color)
+    fillRuleInput.val(data.fillRule)
+    viewBoxInput.val(data.baseSize)
+    setViewBox(data.baseSize)
+    $('#image').attr({
+      d: src,
+      fill: data.color,
+      'fill-rule': data.fillRule
+    })
+    store('name', data.name)
+    store('path-data', src)
+    store('fill-color', data.color)
+    store('fill-rule', data.fillRule)
+    store('size', data.baseSize)
+  } catch (ex) {
+    alert('Invalid file')
+  }
+}
+
+$('#file-upload').on('change', () => {
+  var file = $('#file-upload').prop('files')[0]
+  if (file) {
+    var reader = new FileReader()
+    reader.onload = e => {
+      processFile(e.target!.result as string)
+    }
+    reader.readAsText(file)
+  }
+})
+
+const reference = $('#reference')
+reference.children('caption').on('click', () => {
+  reference.toggleClass('closed')
+})
+
+const uiZoom = $('#ui-zoom')
+let zoom = 10
+function setZoom(newZoom: number): void {
+	if (newZoom < 5 || newZoom > 30) {
+     return
+  }
+  zoom = newZoom
+  const zoomStr = zoom + '0%'
+  $('html').css({zoom: zoomStr})
+  uiZoom.children('div:nth-child(2)').text(zoomStr)
+  store('zoom', zoom.toString())
+}
+uiZoom.children('div:first-child').on('click', () => { setZoom(zoom - 1) })
+uiZoom.children('div:last-child').on('click', () => { setZoom(zoom + 1) })
+load('zoom', z => { setZoom(parseInt(z)) })
