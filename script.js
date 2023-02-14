@@ -416,7 +416,7 @@ function validatePathData(data) {
 const pathDataInput = $('#pathdata');
 load('path-data', value => {
     pathDataInput.val(value);
-    $('#image').attr({ d: value });
+    $('#image').attr({ d: value.replace(/#.*([\r\n]|$)/g, '$1') });
 });
 CodeMirror.defineMode('svg_path_data', function (config, parserConfig) {
     const indentUnit = config.indentUnit;
@@ -581,7 +581,7 @@ function processFile(content) {
         viewBoxInput.val(data.baseSize);
         setViewBox(data.baseSize);
         $('#image').attr({
-            d: src,
+            d: src.replace(/#.*([\r\n]|$)/g, '$1'),
             fill: data.color,
             'fill-rule': data.fillRule
         });

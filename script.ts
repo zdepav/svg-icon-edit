@@ -479,7 +479,7 @@ function validatePathData(data: string): boolean {
 const pathDataInput = $('#pathdata')
 load('path-data', value => {
   pathDataInput.val(value)
-  $('#image').attr({d: value})
+  $('#image').attr({d: value.replace(/#.*([\r\n]|$)/g, '$1')})
 })
 
 type ParserState = {indent: number, expectedArgCount: number, argCount: number, prevWasComma: boolean}
@@ -653,7 +653,7 @@ function processFile(content: string): void {
     viewBoxInput.val(data.baseSize)
     setViewBox(data.baseSize)
     $('#image').attr({
-      d: src,
+      d: src.replace(/#.*([\r\n]|$)/g, '$1'),
       fill: data.color,
       'fill-rule': data.fillRule
     })
