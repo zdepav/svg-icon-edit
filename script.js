@@ -483,7 +483,7 @@ var editor = CodeMirror.fromTextArea(document.getElementById('pathdata'), {
 editor.on('change', () => {
     const val = editor.getValue();
     if (validatePathData(val)) {
-        $('#image').attr({ d: val });
+        $('#image').attr({ d: val.replace(/#.*([\r\n]|$)/g, '$1') });
         store('path-data', val);
     }
 });
