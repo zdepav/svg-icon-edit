@@ -87,5 +87,6 @@ pre{white-space:pre-wrap;white-space:-moz-pre-wrap;white-space:-pre-wrap;white-s
 #ui-zoom div:last-child::before{content:'';position:absolute;background-color:#808080;width:2px;height:12px;left:11px;top:5px}
 .cm-s-svg-path-data .cm-keyword{color:#C00060;font-weight:bold;line-height:1em}
 .cm-s-svg-path-data .cm-number{color:#50A000}
+.cm-s-svg-path-data .cm-comment{color:#809080}
 .cm-s-svg-path-data .cm-error{color:#FFFFFF;background-color:#FF0040}
 .cm-s-svg-path-data .CodeMirror-gutters{background-color:#F8F4F0}
