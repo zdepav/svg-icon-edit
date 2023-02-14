@@ -94,25 +94,6 @@ load('fill-color', value => {
   $('#image').attr({fill: value})
   setColorInputPreview(value)
 })
-/*
-function getPos(str: string, index: number): { line: number, col: number } {
-  let line = 1, col = 1
-  for (let i = 0; i < index; ++i) {
-    if (str[i] == '\n') {
-      line += 1
-      col = 1
-    } else if (str[i] == '\r') {
-      if (i + 1 < str.length && str[i + 1] == '\n') {
-        ++i
-      }
-      line += 1
-      col = 1
-    } else {
-      col += 1
-    }
-  }
-  return {line: line, col: col}
-}*/
 
 type Pos = {x: number, y: number}
 type ParsedArgs = {i: Instruction, r: Array<number>, a: Array<number>}
@@ -349,12 +330,14 @@ function tokenize(data: string, errors: Array<string>): Array<Token> {
   const tokens: Array<Token> = []
   let line = 1, col = 1
   let prevWasComma = false
+  let inComment = false
   for (let i = 0; i < data.length; ++i, ++col) {
     const c = data[i]
     if (c == '\n') {
       ++line
       col = 0
       prevWasComma = false
+      inComment = false
       continue
     } else if (c == '\r') {
       if (i + 1 < data.length && data[i + 1] == '\n') {
@@ -363,6 +346,12 @@ function tokenize(data: string, errors: Array<string>): Array<Token> {
       ++line
       col = 0
       prevWasComma = false
+      inComment = false
+      continue
+    } else if (inComment) {
+      continue
+    } else if (c == '#') {
+      inComment = true
       continue
     } else if (/^[a-z]$/i.test(c)) {
       const C = c.toUpperCase()
@@ -477,28 +466,6 @@ function minify(data: ParsedPathData): string {
 }
 
 function validatePathData(data: string): boolean {
-  /*let errors: Array<string> = []
-  for (const match of data.matchAll(/[^MZLHVCSQTA0-9-,.\s]+/gi)) {
-    const { line, col } = getPos(data, match.index)
-    errors.push(
-      'Invalid character' + (match.length > 1 ? 's' : '') + ' "' +
-      match[0].replace('"', '\\"') + '" at line ' + line + ', column ' + col
-    )
-  }
-  for (const match of data.matchAll(/[MLHVCSQTA]\s*[MLHVCSQTAZ]/gi)) {
-    const { line, col } = getPos(data, match.index)
-    errors.push('Missing arguments for "' + match[0][0] + '" at line ' + line + ', column ' + col)
-  }
-  if (!/^\s*M/i.test(data)) {
-    errors.push('Invalid start, path must start with MoveTo')
-  }
-  if (errors.length > 0) {
-    $('#errors').text(errors.join('\n'))
-    return false
-  } else {
-    $('#errors').empty()
-    return true
-  }*/
   const parsed = parse(data)
   if (parsed.errors.length > 0) {
     $('#errors').text(parsed.errors.join('\n'))
@@ -527,6 +494,9 @@ CodeMirror.defineMode('svg_path_data', function(config: any, parserConfig: any) 
       if (stream.eatSpace()) {
         style = null
         state.prevWasComma = false
+      } else if (stream.eat('#')) {
+        style = 'comment'
+        stream.skipToEnd()
       } else if (stream.eat(',')) {
         style = state.prevWasComma ? 'error' : null
         state.prevWasComma = true
@@ -574,7 +544,7 @@ var editor = CodeMirror.fromTextArea(document.getElementById('pathdata'), {
 editor.on('change', () => {
   const val = editor.getValue()
   if (validatePathData(val)) {
-    $('#image').attr({d: val})
+    $('#image').attr({d: val.replace(/#.*([\r\n]|$)/g, '$1')})
     store('path-data', val)
   }
 })
@@ -594,19 +564,6 @@ load('name', value => {
 })
 
 function buildOutput(svgFormat: boolean): string {
-/*
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg width="391" height="391" viewBox="-70.5 -70.5 391 391" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-<rect fill="#fff" stroke="#000" x="-70" y="-70" width="390" height="390"/>
-<g opacity="0.8">
-	<rect x="25" y="25" width="200" height="200" fill="lime" stroke-width="4" stroke="pink" />
-	<circle cx="125" cy="125" r="75" fill="orange" />
-	<polyline points="50,150 50,200 200,200 200,100" stroke="red" stroke-width="4" fill="none" />
-	<line x1="50" y1="50" x2="200" y2="200" stroke="blue" stroke-width="4" />
-</g>
-</svg>
-*/
   const code = editor.getValue()
   const parsed = parse(code)
   const metadata = {

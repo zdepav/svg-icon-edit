@@ -276,12 +276,14 @@ function tokenize(data, errors) {
     const tokens = [];
     let line = 1, col = 1;
     let prevWasComma = false;
+    let inComment = false;
     for (let i = 0; i < data.length; ++i, ++col) {
         const c = data[i];
         if (c == '\n') {
             ++line;
             col = 0;
             prevWasComma = false;
+            inComment = false;
             continue;
         }
         else if (c == '\r') {
@@ -291,6 +293,14 @@ function tokenize(data, errors) {
             ++line;
             col = 0;
             prevWasComma = false;
+            inComment = false;
+            continue;
+        }
+        else if (inComment) {
+            continue;
+        }
+        else if (c == '#') {
+            inComment = true;
             continue;
         }
         else if (/^[a-z]$/i.test(c)) {
@@ -419,6 +429,10 @@ CodeMirror.defineMode('svg_path_data', function (config, parserConfig) {
             if (stream.eatSpace()) {
                 style = null;
                 state.prevWasComma = false;
+            }
+            else if (stream.eat('#')) {
+                style = 'comment';
+                stream.skipToEnd();
             }
             else if (stream.eat(',')) {
                 style = state.prevWasComma ? 'error' : null;
